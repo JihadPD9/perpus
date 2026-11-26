@@ -15,6 +15,13 @@ class DatabaseSeeder extends Seeder
      */
     public function run(): void
     {
+
+        // Memanggil Seeder Rak Buku secara otomatis
+        $this->call([
+            BookshelfSeeder::class,
+            BookSeeder::class,
+        ]);
+        
         // User::factory(10)->create();
 
         User::factory()->create([
