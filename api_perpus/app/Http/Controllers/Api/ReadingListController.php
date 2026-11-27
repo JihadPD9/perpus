@@ -3,95 +3,114 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\Bookshelf;
 use App\Models\ReadingList;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Validator;
 
 class ReadingListController extends Controller
 {
-    // Tampilkan semua buku yang disimpan di reading lists
-    public function index()
+    public function index(Request $request)
     {
-        $readingLists = ReadingList::with('bookshelf')->get();
+        $items = ReadingList::query()
+            ->where('user_id', $request->user()->id)
+            ->with('bookshelf')
+            ->when($request->filled('category_id'), function ($query) use ($request) {
+                $query->where('bookshelf_id', $request->integer('category_id'));
+            })
+            ->latest()
+            ->get();
+
         return response()->json([
             'success' => true,
-            'message' => 'List Reading Lists',
-            'data'    => $readingLists
-        ], 200);
+            'data' => $items,
+        ]);
     }
 
-    // Simpan buku ke reading list (Disimpan ke rak tertentu)
     public function store(Request $request)
     {
-        $validator = Validator::make($request->all(), [
-            'bookshelf_id' => 'required|exists:bookshelves,id',
-            'title'        => 'required|string',
-            'author'       => 'required|string',
-            'cover'        => 'nullable|string',
-            'last_page'    => 'nullable|integer',
+        $validated = $request->validate([
+            'category_id' => 'nullable|required_without:bookshelf_id|integer|exists:bookshelves,id',
+            'bookshelf_id' => 'nullable|required_without:category_id|integer|exists:bookshelves,id',
+            'title' => 'required|string|max:255',
+            'author' => 'required|string|max:255',
+            'cover' => 'nullable|string',
+            'last_page' => 'nullable|integer|min:0',
         ]);
 
-        if ($validator->fails()) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Validasi Gagal',
-                'errors'  => $validator->errors()
-            ], 422);
-        }
+        $categoryId = $validated['category_id'] ?? $validated['bookshelf_id'];
+        $this->findVisibleCategory($request, (int) $categoryId);
 
-        $readingList = ReadingList::create([
-            'bookshelf_id' => $request->bookshelf_id,
-            'title'        => $request->title,
-            'author'       => $request->author,
-            'cover'        => $request->input('cover') ?? '',
-            'last_page'    => $request->last_page ?? 0,
+        $item = ReadingList::create([
+            'bookshelf_id' => $categoryId,
+            'user_id' => $request->user()->id,
+            'title' => $validated['title'],
+            'author' => $validated['author'],
+            'cover' => $validated['cover'] ?? '',
+            'last_page' => $validated['last_page'] ?? 0,
         ]);
 
         return response()->json([
             'success' => true,
-            'message' => 'Buku berhasil ditambahkan ke Reading List',
-            'data'    => $readingList
+            'data' => $item->load('bookshelf'),
         ], 201);
     }
 
-    // Update halaman terakhir
-    public function update(Request $request, $id)
+    public function update(Request $request, int $id)
     {
-        $readingList = ReadingList::find($id);
-        if (!$readingList) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Data tidak ditemukan',
-            ], 404);
-        }
+        $item = ReadingList::query()
+            ->where('user_id', $request->user()->id)
+            ->findOrFail($id);
 
-        $readingList->update([
-            'last_page' => $request->last_page ?? $readingList->last_page,
+        $validated = $request->validate([
+            'category_id' => 'sometimes|required|integer|exists:bookshelves,id',
+            'bookshelf_id' => 'sometimes|required|integer|exists:bookshelves,id',
+            'title' => 'sometimes|required|string|max:255',
+            'author' => 'sometimes|required|string|max:255',
+            'cover' => 'nullable|string',
+            'last_page' => 'sometimes|integer|min:0',
         ]);
 
-        return response()->json([
-            'success' => true,
-            'message' => 'Halaman terakhir berhasil diperbarui',
-            'data'    => $readingList
-        ], 200);
-    }
-
-    // Hapus dari reading list
-    public function destroy($id)
-    {
-        $readingList = ReadingList::find($id);
-        if (!$readingList) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Data tidak ditemukan',
-            ], 404);
+        $categoryId = $validated['category_id'] ?? $validated['bookshelf_id'] ?? null;
+        if ($categoryId !== null) {
+            $this->findVisibleCategory($request, (int) $categoryId);
+            $validated['bookshelf_id'] = $categoryId;
+        }
+        unset($validated['category_id']);
+        if (array_key_exists('cover', $validated) && $validated['cover'] === null) {
+            $validated['cover'] = '';
         }
 
-        $readingList->delete();
+        $item->update($validated);
 
         return response()->json([
             'success' => true,
-            'message' => 'Buku berhasil dihapus dari Reading List',
-        ], 200);
+            'data' => $item->refresh()->load('bookshelf'),
+        ]);
+    }
+
+    public function destroy(Request $request, int $id)
+    {
+        $item = ReadingList::query()
+            ->where('user_id', $request->user()->id)
+            ->findOrFail($id);
+
+        $item->delete();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Item koleksi berhasil dihapus.',
+        ]);
+    }
+
+    private function findVisibleCategory(Request $request, int $categoryId): Bookshelf
+    {
+        $userId = $request->user()->id;
+
+        return Bookshelf::query()
+            ->whereKey($categoryId)
+            ->where(function ($query) use ($userId) {
+                $query->whereNull('user_id')->orWhere('user_id', $userId);
+            })
+            ->firstOrFail();
     }
 }

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import 'views/auth/login_page.dart';
+
+import 'routes/app_routing.dart';
 
 void main() {
   runApp(const PerpusKlasikkuApp());
@@ -16,15 +17,24 @@ class PerpusKlasikkuApp extends StatelessWidget {
       theme: ThemeData(
         brightness: Brightness.dark,
         scaffoldBackgroundColor: const Color(0xFF121212),
-        primaryColor: const Color(0xFF1F1F1F),
         colorScheme: const ColorScheme.dark(
-          primary: Colors.white,
-          secondary: Colors.grey,
+          primary: Colors.amber,
+          secondary: Colors.amberAccent,
           surface: Color(0xFF1E1E1E),
         ),
-        fontFamily: 'Sans', // Atau font bawaan
+        inputDecorationTheme: const InputDecorationTheme(
+          border: OutlineInputBorder(),
+        ),
+        useMaterial3: true,
       ),
-      home: const LoginPage(),
+      initialRoute: AppRouting.splash,
+      routes: AppRouting.routes,
+      onGenerateRoute: AppRouting.onGenerateRoute,
+      onUnknownRoute: (_) => MaterialPageRoute<void>(
+        builder: (_) => const Scaffold(
+          body: Center(child: Text('Halaman tidak ditemukan.')),
+        ),
+      ),
     );
   }
 }

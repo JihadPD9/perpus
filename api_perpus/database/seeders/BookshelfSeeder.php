@@ -2,8 +2,8 @@
 
 namespace Database\Seeders;
 
-use Illuminate\Database\Seeder;
 use App\Models\Bookshelf;
+use Illuminate\Database\Seeder;
 
 class BookshelfSeeder extends Seeder
 {
@@ -16,7 +16,10 @@ class BookshelfSeeder extends Seeder
         ];
 
         foreach ($shelves as $shelf) {
-            Bookshelf::create($shelf);
+            Bookshelf::firstOrCreate(
+                ['name' => $shelf['name'], 'user_id' => null],
+                ['description' => $shelf['description']],
+            );
         }
     }
 }
